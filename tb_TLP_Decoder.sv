@@ -41,7 +41,7 @@ initial begin
     Header[0] = 32'b010_00100_0_000_0_0_0_0_1_1_00_00_0000000001; //config write on BAR 0 address
     Header[1] = 32'h01_00_00_0_f;
     Header[2] = 32'b0000_0001_0000_0000_0000_0000_0001_0000;
-    data_in   = 32'h0004_FFFF;
+    data_in   = 32'hF900_0000;
     repeat(2)@(posedge clk);
 
     Header[0] = 32'b000_00100_0_000_0_0_0_0_1_1_00_00_0000000001; //config read on BAR 0 read the written address
@@ -82,13 +82,13 @@ initial begin
     Header[0] = 32'b010_00100_0_000_0_0_0_0_1_1_00_00_0000000001; //config write on BAR 1 address
     Header[1] = 32'h01_00_00_0_f;
     Header[2] = 32'b0000_0001_0000_0000_0000_0000_0001_0100;
-    data_in   = 32'h05FF_FFFF;
+    data_in   = 32'h4000_0000;
     repeat(3)@(posedge clk); //delay next data in by a cycle
     Header[0] = 32'b010_00100_0_000_0_0_0_0_1_1_00_00_0000000001; //config write on BAR 2 address
     Header[1] = 32'h01_00_00_0_f;
     Header[2] = 32'b0000_0001_0000_0000_0000_0000_0001_1000;
     @(posedge clk);
-    data_in   = 32'h0000_0001;
+    data_in   = 32'h0000_0002;
     repeat(2)@(posedge clk);
 
     Header[0] = 32'b000_00100_0_000_0_0_0_0_1_1_00_00_0000000001; //config read on BAR 2 read the written address
@@ -121,7 +121,7 @@ initial begin
     Header[0] = 32'b010_00100_0_000_0_0_0_0_1_1_00_00_0000000001; //config write on BAR 3 address
     Header[1] = 32'h01_00_00_0_f;
     Header[2] = 32'b0000_0001_0000_0000_0000_0000_0001_1100;
-    data_in   = 32'h0006_FFFF;
+    data_in   = 32'h0000_4000;
     repeat(2)@(posedge clk);
 
     Header[0] = 32'b000_00100_0_000_0_0_0_0_1_1_00_00_0000000001; //config read on BAR 3 read the written address
@@ -129,6 +129,35 @@ initial begin
     Header[2] = 32'b0000_0001_0000_0000_0000_0000_0001_1100;
     repeat(3)@(posedge clk);
 
+//change addresses to verify out of bounds address ranges are not written or read.
+//ive already verified
+
+    //sent a memory request
+    Header[0] = 32'b011_00000_0_000_0_0_0_0_1_1_00_00_0000000001; 
+    Header[1] = 32'h01_00_00_f_f;
+    Header[2] = 32'h0000_0002;
+    Header[3] = 32'h4000_4002;
+    data_in   = 32'h0000_4000;
+    repeat(2)@(posedge clk);
+
+    Header[0] = 32'b010_00010_0_000_0_0_0_0_1_1_00_00_0000000001; //io write request
+    Header[1] = 32'h01_00_00_f_f;
+    Header[2] = 32'h0000_40F0;
+    Header[3] = 32'h0;
+    data_in   = 32'h0000_400F;
+    repeat(2)@(posedge clk);
+
+    Header[0] = 32'b000_00010_0_000_0_0_0_0_1_1_00_00_0000000001; //io read request shouldnt take place
+    Header[1] = 32'h01_00_00_f_f;
+    Header[2] = 32'h0000_50F0;
+    Header[3] = 32'h0;
+    repeat(2)@(posedge clk);
+
+    Header[0] = 32'b000_00010_0_000_0_0_0_0_1_1_00_00_0000000001; //io read request should take place
+    Header[1] = 32'h01_00_00_f_f;
+    Header[2] = 32'h0000_40F0;
+    Header[3] = 32'h0;
+    repeat(2)@(posedge clk);
 
     $finish; 
 end
