@@ -2,16 +2,25 @@ module TLP_Decoder #(
     parameter DATA_WIDTH      = 32, //dw addressable
     parameter TOTAL_DW        = 4
 ) (
-    input logic [DATA_WIDTH - 1 : 0] Header [0 : TOTAL_DW - 1], //receiving the header 
+    input logic [DATA_WIDTH - 1 : 0] Header [0 : TOTAL_DW - 1], //receiving the header
+    //Config Requests 
     output logic CONFIG_READ,
     output logic CONFIG_WRITE,
     output logic [7 : 0] Bus_Number,
     output logic [4 : 0] Device_ID,
     output logic [2 : 0] Function_Number,
-    output logic [7 : 0] Register_Number
-    //i might require to add other flags also but will see later
-    //also output the Bus number and devive number for now for first type 1 config write
-    //ouput the register number too
+    output logic [7 : 0] Register_Number,
+    //MEM Requets
+    output logic DW_3_MEM_READ,
+    output logic DW_3_MEM_WRITE,
+    output logic DW_4_MEM_READ,
+    output logic DW_4_MEM_WRITE,
+    output logic [31 : 0] Address_lower, //used for IO too
+    output logic [31 : 0] Address_upper, //used for MEM only 
+    //IO Requests
+    output logic IO_READ,
+    output logic IO_WRITE
+
 );
 
 logic [2 : 0] FMT;
@@ -29,21 +38,10 @@ logic [3 : 0] F_DW_BYTE_EN;
 //for memory and IO requests
 logic [15 : 0] Requester_ID;
 logic [7 : 0]  Tag;
-logic [31 : 0] Address_lower;
-logic [31 : 0] Address_upper;
-//IO Requests
-logic IO_READ;
-logic IO_WRITE;
-//MEM Requests
-logic DW_3_MEM_READ;
-logic DW_3_MEM_WRITE;
-logic DW_4_MEM_READ;
-logic DW_4_MEM_WRITE;
 
 //for config requests
 logic [15 : 0] Completer_ID;
 logic [3 : 0]  Ex_Register_No;
-logic [7 : 0]  Register_Number;
 
 //completion
 logic [2 : 0] Compl_status;
@@ -114,16 +112,28 @@ always_comb begin
         5'b00000: begin //MEM Req (not Locked)
             Requester_ID           = Header[1][31 : 16];
             Tag                    = Header[1][15 : 8]; 
-            Address_lower[1 : 0]   = 2'b0;
-            Address_lower[31 : 2]  = Header[2][31 : 2];
             case (FMT)
-                3'b000: DW_3_MEM_READ = 1;
-                3'b010: DW_3_MEM_WRITE = 1;
-                3'b001: begin DW_4_MEM_READ = 1;
-                         Address_upper = Header[3];
+                3'b000: begin
+                    DW_3_MEM_READ = 1; 
+                    Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 2]  = Header[2][31 : 2];
+                end
+                3'b010: begin
+                    DW_3_MEM_WRITE = 1; 
+                    Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 2]  = Header[2][31 : 2];
+                end
+                3'b001: begin
+                    DW_4_MEM_READ = 1;
+                    Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 2]  = Header[3][31 : 2];
+                    Address_upper = Header[2];
                     end
-                3'b011: begin DW_4_MEM_WRITE = 1; 
-                         Address_upper = Header[3];
+                3'b011: begin 
+                    DW_4_MEM_WRITE = 1; 
+                    Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 2]  = Header[3][31 : 2];
+                    Address_upper = Header[2];
                     end
             endcase            
         end
@@ -172,8 +182,8 @@ always_comb begin
             Tag                    = Header[1][15 : 8]; 
             Message_Code           = Header[1][7 : 0];
             Address_lower[1 : 0]   = 2'b0;
-            Address_lower[31 : 2]  = Header[2][31 : 2];
-            Address_upper          = Header[3];
+            Address_lower[31 : 2]  = Header[3][31 : 2];
+            Address_upper          = Header[2];
             case (FMT)
                 3'b001: MESSAGE_WO_DATA = 1;
                 3'b011: MESSAGE_W_DATA  = 1; 
