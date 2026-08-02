@@ -19,25 +19,23 @@ module TLP_Decoder #(
     output logic [31 : 0] Address_upper, //used for MEM only 
     //IO Requests
     output logic IO_READ,
-    output logic IO_WRITE
-
+    output logic IO_WRITE,
+    //for completions
+    output logic [2 : 0] TC,
+    output logic [2 : 0] Attr,
+    output logic [9 : 0] Length, //to be used for MEM AND IO too
+    output logic [3 : 0] F_DW_BYTE_EN,
+    output logic [3 : 0] L_DW_BYTE_EN, //lower address generation
+    output logic [15 : 0] Requester_ID,
+    output logic [7 : 0] Tag
 );
 
 logic [2 : 0] FMT;
 logic [4 : 0] TYPE;
-logic [2 : 0] TC;
-logic [2 : 0] Attr;
 logic TH;
 logic TD;
 logic EP;
 logic [1 : 0] Address_type;
-logic [9 : 0] Length;
-logic [3 : 0] L_DW_BYTE_EN;
-logic [3 : 0] F_DW_BYTE_EN;
-
-//for memory and IO requests
-logic [15 : 0] Requester_ID;
-logic [7 : 0]  Tag;
 
 //for config requests
 logic [15 : 0] Completer_ID;
@@ -102,8 +100,8 @@ always_comb begin
         5'b00010: begin //IO request
             Requester_ID           = Header[1][31 : 16];
             Tag                    = Header[1][15 : 8]; 
-            Address_lower[1 : 0]   = 2'b0;
-            Address_lower[31 : 2]  = Header[2][31 : 2];
+            // Address_lower[1 : 0]   = 2'b0;
+            Address_lower[31 : 0]  = Header[2][31 : 0];
             case (FMT)
                 3'b000: IO_READ = 1'b1;
                 3'b010: IO_WRITE = 1'b1; 
@@ -115,24 +113,24 @@ always_comb begin
             case (FMT)
                 3'b000: begin
                     DW_3_MEM_READ = 1; 
-                    Address_lower[1 : 0]   = 2'b0;
-                    Address_lower[31 : 2]  = Header[2][31 : 2];
+                    // Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 0]  = Header[2][31 : 0];
                 end
                 3'b010: begin
                     DW_3_MEM_WRITE = 1; 
-                    Address_lower[1 : 0]   = 2'b0;
-                    Address_lower[31 : 2]  = Header[2][31 : 2];
+                    // Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 0]  = Header[2][31 : 0];
                 end
                 3'b001: begin
                     DW_4_MEM_READ = 1;
-                    Address_lower[1 : 0]   = 2'b0;
-                    Address_lower[31 : 2]  = Header[3][31 : 2];
+                    // Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 0]  = Header[3][31 : 0];
                     Address_upper = Header[2];
                     end
                 3'b011: begin 
                     DW_4_MEM_WRITE = 1; 
-                    Address_lower[1 : 0]   = 2'b0;
-                    Address_lower[31 : 2]  = Header[3][31 : 2];
+                    // Address_lower[1 : 0]   = 2'b0;
+                    Address_lower[31 : 0]  = Header[3][31 : 0];
                     Address_upper = Header[2];
                     end
             endcase            
@@ -181,8 +179,8 @@ always_comb begin
             Requester_ID           = Header[1][31 : 16];
             Tag                    = Header[1][15 : 8]; 
             Message_Code           = Header[1][7 : 0];
-            Address_lower[1 : 0]   = 2'b0;
-            Address_lower[31 : 2]  = Header[3][31 : 2];
+            // Address_lower[1 : 0]   = 2'b0;
+            Address_lower[31 : 0]  = Header[3][31 : 0];
             Address_upper          = Header[2];
             case (FMT)
                 3'b001: MESSAGE_WO_DATA = 1;
