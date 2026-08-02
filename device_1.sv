@@ -9,6 +9,7 @@ module device_1 #(
     input logic CONFIG_WRITE,
     input logic [4 : 0] Device_ID_Decoder,
     input logic [7 : 0] Register_Number,
+    input logic [9 : 0] Length, //for multi DW transfers
     input logic DW_3_MEM_READ,
     input logic DW_3_MEM_WRITE,
     input logic DW_4_MEM_READ,
@@ -17,29 +18,52 @@ module device_1 #(
     input logic [31 : 0] Address_upper,
     input logic IO_READ,
     input logic IO_WRITE,
-    input logic [DATA_WIDTH - 1 : 0]   data_in,
-    output logic[DATA_WIDTH - 1 : 0]   data_out,
-
-    output logic debug_read,
-    output logic debug_write,
-    output logic debug_read_4,
-    output logic debug_write_4,
-    output logic debug_read_io,
-    output logic debug_write_io
+    output logic Compl_Read,
+    output logic Compl_Write,
+    output logic mem_write_done,//this isnt a completion but for internal module
+    output logic [2 : 0] Completer_Function,
+    output logic [4 : 0] Completer_Dev,
+    output logic [2 : 0] Compl_status, //completion always completes for now
+    output logic [11 : 0] Byte_count, //number of bytes remaining to complete a read request with multiple completions 
+    input logic [DATA_WIDTH - 1 : 0] data_in,
+    output logic[DATA_WIDTH - 1 : 0] data_out
 );
+//completion to be issued when counter == length
+logic [10 : 0] DW_Counter;
+typedef enum logic [1 : 0] {
+    SERVE      = 2'B00,
+    SERVE_DONE = 2'b01,
+    IDLE       = 2'b10
+} state_t;
+
+state_t state_curr;
+
+//activate completion only when the edge falls
+assign Compl_Read   = (state_curr == SERVE_DONE && (DW_3_MEM_READ || DW_4_MEM_READ)) || (IO_READ || CONFIG_READ);
+assign Compl_Write  = CONFIG_WRITE || IO_WRITE;
+assign mem_write_done = (state_curr == SERVE_DONE) && (DW_3_MEM_WRITE || DW_4_MEM_WRITE);
+assign Compl_status = 3'b000; //always completes for now
+assign Byte_count   = 12'b0; //for now only a single completion is required
+
+logic debug_read;
+logic debug_write;
+logic debug_read_4;
+logic debug_write_4;
+logic debug_read_io;
+logic debug_write_io;
 
 reg[DATA_WIDTH - 1 : 0] CONFIGURATION_SPACE [0 : TOTAL_DW - 1];
-reg[DATA_WIDTH - 1 : 0] MEM_SPACE [0 : 65536];
+reg[DATA_WIDTH - 1 : 0] MEM_SPACE [0 : 256];
 reg[DATA_WIDTH - 1 : 0] IO_SPACE  [0 : 65536];
 reg[DATA_WIDTH - 1 : 0] WRITE_MASK [0 : TOTAL_DW - 1];
 
-assign Function_Number = 1'b0;
+assign Completer_Function = 3'b000;
+assign Completer_Dev      = CONFIGURATION_SPACE[0][20 : 16];
 
 //the device knows it's last writable BAR bits 
 logic [31 : 0] BAR0_LIMIT;
 logic [31 : 0] BAR1_LIMIT;
 logic [31 : 0] BAR3_LIMIT;
-
 assign BAR0_LIMIT = 32'd12;
 assign BAR1_LIMIT = 32'd26;
 assign BAR3_LIMIT = 32'd8;
@@ -52,20 +76,21 @@ assign BAR1_Address_64_Bits           = {Address_upper, Address_lower};
 assign BAR1_Address_64_Bits_BAR       = {CONFIGURATION_SPACE[6][31 : 0], CONFIGURATION_SPACE[5][31 : 26], 26'b0};
 assign BAR1_Address_64_Bits_BAR_LIMIT = BAR1_Address_64_Bits_BAR + (1 << BAR1_LIMIT) - 1; //should have FFFs in LSB
 
-
 logic [DATA_WIDTH - 1 : 0] BAR0_LIMIT_Address;
 logic [DATA_WIDTH - 1 : 0] BAR0_LIMIT_Address_upper;
 assign BAR0_LIMIT_Address       = {CONFIGURATION_SPACE[4][31 : 12], 12'b0};
 assign BAR0_LIMIT_Address_upper = BAR0_LIMIT_Address + (1 << BAR0_LIMIT) - 1; //should have FFFs in LSB
-
 
 logic [DATA_WIDTH - 1 : 0] BAR3_LIMIT_Address;
 logic [DATA_WIDTH - 1 : 0] BAR3_LIMIT_Address_upper;
 assign BAR3_LIMIT_Address       = {CONFIGURATION_SPACE[7][31 : 8], 8'b0};
 assign BAR3_LIMIT_Address_upper = BAR3_LIMIT_Address + (1 << BAR3_LIMIT) - 1;
 
+
 always_ff @(posedge clk) begin
     if(reset) begin
+        DW_Counter <= 11'd1;
+        state_curr <= SERVE;
         debug_read <= 0;
         CONFIGURATION_SPACE[0][15 : 0] <= 16'h01; //defining vendor id
 
@@ -123,37 +148,133 @@ always_ff @(posedge clk) begin
         end
         if (DW_3_MEM_READ) begin
             if ((BAR0_LIMIT_Address <= Address_lower) && (Address_lower <= BAR0_LIMIT_Address_upper)) begin
-                data_out   <= MEM_SPACE[Address_lower];
                 debug_read <= 1;
+                case (state_curr)
+                    SERVE: begin
+                        if((DW_Counter <= Length) && Length != 11'd0) begin
+                            DW_Counter <= DW_Counter + 11'd1;
+                            data_out   <= MEM_SPACE[Address_lower - BAR0_LIMIT_Address + DW_Counter - 1];
+                        end
+                        else if (Length == 11'd0) begin
+                            if(DW_Counter <= 11'd1024) begin
+                                DW_Counter <= DW_Counter + 11'd1;
+                                data_out   <= MEM_SPACE[Address_lower - BAR0_LIMIT_Address + DW_Counter - 1];
+                            end
+                            else if (DW_Counter > 11'd1024) begin
+                                state_curr <= SERVE_DONE;
+                            end
+                        end
+                        else if(DW_Counter > Length) begin
+                            state_curr <= SERVE_DONE;
+                        end
+                    end
+                    SERVE_DONE: begin
+                        DW_Counter <= 11'd1;
+                        state_curr <= SERVE; //issue completion when serve gets over so that it instantly disables DW_3_..
+                    end 
+                    default: state_curr <= SERVE;
+                endcase
             end
         end
         if (DW_3_MEM_WRITE) begin
             if ((BAR0_LIMIT_Address <= Address_lower) && (Address_lower <= BAR0_LIMIT_Address_upper)) begin
-                MEM_SPACE[Address_lower] <= data_in;
                 debug_write <= 1;
+                case (state_curr)
+                    SERVE: begin
+                        if((DW_Counter <= Length) && Length != 11'd0) begin
+                            DW_Counter <= DW_Counter + 11'd1;
+                            MEM_SPACE[Address_lower - BAR0_LIMIT_Address + DW_Counter - 1] <= data_in;
+                        end
+                        else if (Length == 11'd0) begin
+                            if(DW_Counter <= 11'd1024) begin
+                                DW_Counter <= DW_Counter + 11'd1;
+                                MEM_SPACE[Address_lower - BAR0_LIMIT_Address + DW_Counter - 1] <= data_in;
+                            end
+                            else if (DW_Counter > 11'd1024) begin
+                                state_curr <= SERVE_DONE;
+                            end
+                        end
+                        else if(DW_Counter > Length) begin
+                            state_curr <= SERVE_DONE;
+                        end
+                    end
+                    SERVE_DONE: begin
+                        DW_Counter <= 11'd1;
+                        state_curr <= SERVE; //issue completion when serve gets over so that it instantly disables DW_3_..
+                    end 
+                    default: state_curr <= SERVE;
+                endcase
             end
         end
         if (DW_4_MEM_READ) begin
             if ((BAR1_Address_64_Bits_BAR <= BAR1_Address_64_Bits) && (BAR1_Address_64_Bits <= BAR1_Address_64_Bits_BAR_LIMIT)) begin
-                data_out   <= MEM_SPACE[BAR1_Address_64_Bits];
                 debug_read_4 <= 1;
+                case (state_curr)
+                    SERVE: begin
+                        if((DW_Counter <= Length) && Length != 11'd0) begin
+                            DW_Counter <= DW_Counter + 11'd1;
+                            data_out   <= MEM_SPACE[BAR1_Address_64_Bits - BAR1_Address_64_Bits_BAR + DW_Counter - 1];
+                        end
+                        else if (Length == 11'd0) begin
+                            if(DW_Counter <= 11'd1024) begin
+                                DW_Counter <= DW_Counter + 11'd1;
+                                data_out   <= MEM_SPACE[BAR1_Address_64_Bits - BAR1_Address_64_Bits_BAR + DW_Counter - 1];
+                            end
+                            else if (DW_Counter > 11'd1024) begin
+                                state_curr <= SERVE_DONE;
+                            end
+                        end
+                        else if(DW_Counter > Length) begin
+                            state_curr <= SERVE_DONE;
+                        end
+                    end
+                    SERVE_DONE: begin
+                        DW_Counter <= 11'd1;
+                        state_curr <= SERVE; //issue completion when serve gets over so that it instantly disables DW_3_..
+                    end 
+                    default: state_curr <= SERVE;
+                endcase
             end
         end
         if (DW_4_MEM_WRITE) begin
             if ((BAR1_Address_64_Bits_BAR <= BAR1_Address_64_Bits) && (BAR1_Address_64_Bits <= BAR1_Address_64_Bits_BAR_LIMIT)) begin
-                MEM_SPACE[BAR1_Address_64_Bits] <= data_in;
                 debug_write_4 <= 1;
+                case (state_curr)
+                    SERVE: begin
+                        if((DW_Counter <= Length) && Length != 11'd0) begin
+                            DW_Counter <= DW_Counter + 11'd1;
+                            MEM_SPACE[BAR1_Address_64_Bits - BAR1_Address_64_Bits_BAR + DW_Counter - 1] <= data_in;
+                        end
+                        else if (Length == 11'd0) begin
+                            if(DW_Counter <= 11'd1024) begin
+                                DW_Counter <= DW_Counter + 11'd1;
+                                MEM_SPACE[BAR1_Address_64_Bits - BAR1_Address_64_Bits_BAR + DW_Counter - 1] <= data_in;
+                            end
+                            else if (DW_Counter > 11'd1024) begin
+                                state_curr <= SERVE_DONE;
+                            end
+                        end
+                        else if(DW_Counter > Length) begin
+                            state_curr <= SERVE_DONE;
+                        end
+                    end
+                    SERVE_DONE: begin
+                        DW_Counter <= 11'd1;
+                        state_curr <= SERVE; //issue completion when serve gets over so that it instantly disables DW_3_..
+                    end 
+                    default: state_curr <= SERVE;
+                endcase
             end
         end
         if (IO_READ) begin
             if ((BAR3_LIMIT_Address <= Address_lower) && (Address_lower <= BAR3_LIMIT_Address_upper)) begin
-                data_out   <= IO_SPACE[Address_lower];
+                data_out   <= IO_SPACE[Address_lower - BAR3_LIMIT_Address];
                 debug_read_io <= 1;
             end
         end
         if (IO_WRITE) begin
             if ((BAR3_LIMIT_Address <= Address_lower) && (Address_lower <= BAR3_LIMIT_Address_upper)) begin
-                IO_SPACE[Address_lower] <= data_in;
+                IO_SPACE[Address_lower - BAR3_LIMIT_Address] <= data_in;
                 debug_write_io <= 1;
             end
         end
