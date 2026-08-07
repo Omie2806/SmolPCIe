@@ -27,36 +27,6 @@ The Endpoint can:
 
 ---
 
-## Architecture
-
-# PCIe RTL Implementation (Transaction Layer)
-
-A SystemVerilog implementation of the PCIe Transaction Layer, built to understand and demonstrate how PCIe actually works at the RTL level. We start from TLP encoding/decoding through enumeration, address decode, and completion handling.
-
-This project is built to demonstrate how PCIe works at hardware level. 
-
-> **Status:** Transaction Layer (TL) complete, bidirectional, and verified.
-- Data Link Layer (DLL): Ack/Nak, replay buffer, flow control **not yet implemented**.
-
----
-
-## What This Project Does
-
-A miniature PCIe topology, that is, one Root Complex (RC) and one Endpoint implemented at the RTL level(TL/DLL scope; PHY is abstracted out).
-
-The RC can:
-- Enumerate(initialize is simple words) the endpoint (probe Vendor/Device ID, size and assign all BARs)
-- Issue Configuration, Memory,I/O Read/Write requests and messages
-- Decode returned Completions (status, tag, data)
-
-The Endpoint can:
-- Respond to Configuration Read/Write requests against a modeled config space
-- Support BAR sizing via the real all-1s-write / read-back mechanism (assign an Address range to the internal memories which can be globally accessed)
-- Decode and service Memory (32-bit and 64-bit addressed) and I/O requests
-- Support multi-DWord burst reads/writes (1–1024 DW, per the TLP Length field encoding)
-- Generate spec-correct Completion TLPs (CplD / Cpl) for all non-posted request types (completion failure support will be added with DLL)
-
----
 
 ## Architecture
 
