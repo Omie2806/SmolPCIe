@@ -5,9 +5,9 @@ module top_decoder_device #(
     input logic clk,
     input logic reset,
     input logic [DATA_WIDTH - 1 : 0] Header [0 : TOTAL_DW - 1],
-    input logic [DATA_WIDTH - 1 : 0] data_in,
+    input logic [DATA_WIDTH - 1 : 0] data_in [0 : 1],
     output logic[DATA_WIDTH - 1 : 0] Completion_Header[0 : TOTAL_DW - 1],
-    output logic[DATA_WIDTH - 1 : 0] data_out,
+    output logic[DATA_WIDTH - 1 : 0] data_out [0 : 1],
     output logic Compl_Read,
     output logic Compl_Write,
     output logic mem_write_done
