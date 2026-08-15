@@ -25,8 +25,8 @@ module device_1 #(
     output logic [4 : 0] Completer_Dev,
     output logic [2 : 0] Compl_status, //completion always completes for now
     output logic [11 : 0] Byte_count, //number of bytes remaining to complete a read request with multiple completions 
-    input logic [DATA_WIDTH - 1 : 0] data_in,
-    output logic[DATA_WIDTH - 1 : 0] data_out
+    input logic [DATA_WIDTH - 1 : 0] data_in [0 : 1],
+    output logic[DATA_WIDTH - 1 : 0] data_out[0 : 1]
 );
 //completion to be issued when counter == length
 logic [10 : 0] DW_Counter;
@@ -143,13 +143,13 @@ always_ff @(posedge clk) begin
         if (CONFIG_WRITE) begin
             for (integer i = 0; i < DATA_WIDTH; i++) begin
                 if(WRITE_MASK[Register_Number][i]) begin
-                    CONFIGURATION_SPACE[Register_Number][i] <= data_in[i];
+                    CONFIGURATION_SPACE[Register_Number][i] <= data_in[0][i];
                 end
             end
             CONFIGURATION_SPACE[0][31 : 16] <= Device_ID_Decoder;
         end
         if (CONFIG_READ) begin
-            data_out <= CONFIGURATION_SPACE[Register_Number];
+            data_out[0] <= CONFIGURATION_SPACE[Register_Number];
         end
         if (DW_3_MEM_READ) begin
             if ((BAR0_LIMIT_Address <= Address_lower) && (Address_lower <= BAR0_LIMIT_Address_upper)) begin
@@ -158,12 +158,12 @@ always_ff @(posedge clk) begin
                     SERVE: begin
                         if((DW_Counter <= Length) && Length != 11'd0) begin
                             DW_Counter <= DW_Counter + 11'd1;
-                            data_out   <= MEM_SPACE[effective_BAR0_Address[7 : 0]];
+                            data_out[DW_Counter - 1]   <= MEM_SPACE[effective_BAR0_Address[7 : 0]];
                         end
                         else if (Length == 11'd0) begin
                             if(DW_Counter <= 11'd1024) begin
                                 DW_Counter <= DW_Counter + 11'd1;
-                                data_out   <= MEM_SPACE[effective_BAR0_Address[7 : 0]];
+                                data_out[DW_Counter - 1]   <= MEM_SPACE[effective_BAR0_Address[7 : 0]];
                             end
                             else if (DW_Counter > 11'd1024) begin
                                 state_curr <= SERVE_DONE;
@@ -188,12 +188,12 @@ always_ff @(posedge clk) begin
                     SERVE: begin
                         if((DW_Counter <= Length) && Length != 11'd0) begin
                             DW_Counter <= DW_Counter + 11'd1;
-                            data_out   <= MEM_SPACE[effective_BAR1_Address[7 : 0]];
+                            data_out[DW_Counter - 1]   <= MEM_SPACE[effective_BAR1_Address[7 : 0]];
                         end
                         else if (Length == 11'd0) begin
                             if(DW_Counter <= 11'd1024) begin
                                 DW_Counter <= DW_Counter + 11'd1;
-                                data_out   <= MEM_SPACE[effective_BAR1_Address[7 : 0]];
+                                data_out[DW_Counter - 1]   <= MEM_SPACE[effective_BAR1_Address[7 : 0]];
                             end
                             else if (DW_Counter > 11'd1024) begin
                                 state_curr <= SERVE_DONE;
@@ -218,12 +218,12 @@ always_ff @(posedge clk) begin
                     SERVE: begin
                         if((DW_Counter <= Length) && Length != 11'd0) begin
                             DW_Counter <= DW_Counter + 11'd1;
-                            MEM_SPACE[effective_BAR0_Address[7 : 0]] <= data_in;
+                            MEM_SPACE[effective_BAR0_Address[7 : 0]] <= data_in[DW_Counter - 1];
                         end
                         else if (Length == 11'd0) begin
                             if(DW_Counter <= 11'd1024) begin
                                 DW_Counter <= DW_Counter + 11'd1;
-                                MEM_SPACE[effective_BAR0_Address[7 : 0]] <= data_in;
+                                MEM_SPACE[effective_BAR0_Address[7 : 0]] <= data_in[DW_Counter - 1];
                             end
                             else if (DW_Counter > 11'd1024) begin
                                 state_curr <= SERVE_DONE;
@@ -248,12 +248,12 @@ always_ff @(posedge clk) begin
                     SERVE: begin
                         if((DW_Counter <= Length) && Length != 11'd0) begin
                             DW_Counter <= DW_Counter + 11'd1;
-                            MEM_SPACE[effective_BAR1_Address[7 : 0]] <= data_in;
+                            MEM_SPACE[effective_BAR1_Address[7 : 0]] <= data_in[DW_Counter - 1];
                         end
                         else if (Length == 11'd0) begin
                             if(DW_Counter <= 11'd1024) begin
                                 DW_Counter <= DW_Counter + 11'd1;
-                                MEM_SPACE[effective_BAR1_Address[7 : 0]] <= data_in;
+                                MEM_SPACE[effective_BAR1_Address[7 : 0]] <= data_in[DW_Counter - 1];
                             end
                             else if (DW_Counter > 11'd1024) begin
                                 state_curr <= SERVE_DONE;
@@ -273,13 +273,13 @@ always_ff @(posedge clk) begin
         end
         if (IO_READ) begin
             if ((BAR3_LIMIT_Address <= Address_lower) && (Address_lower <= BAR3_LIMIT_Address_upper)) begin
-                data_out   <= IO_SPACE[effective_BAR3_Address[7 : 0]];
+                data_out[0]   <= IO_SPACE[effective_BAR3_Address[7 : 0]];
                 debug_read_io <= 1;
             end
         end
         if (IO_WRITE) begin
             if ((BAR3_LIMIT_Address <= Address_lower) && (Address_lower <= BAR3_LIMIT_Address_upper)) begin
-                IO_SPACE[effective_BAR3_Address[7 : 0]] <= data_in;
+                IO_SPACE[effective_BAR3_Address[7 : 0]] <= data_in[0];
                 debug_write_io <= 1;
             end
         end
