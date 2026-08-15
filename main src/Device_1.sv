@@ -98,6 +98,7 @@ always_ff @(posedge clk) begin
         state_curr <= SERVE;
         debug_read <= 0;
         CONFIGURATION_SPACE[0][15 : 0] <= 16'h01; //defining vendor id
+        CONFIGURATION_SPACE[0][31 : 16] <= 16'h0; 
 
         //will ignore the next 3 lines for now and directly skip to BARS
         //BAR0
@@ -105,22 +106,23 @@ always_ff @(posedge clk) begin
         CONFIGURATION_SPACE[4][2 : 1] <= 2'b00; //32 bit decoding
         CONFIGURATION_SPACE[4][3]     <= 1'b0; //non-prefetchable
         //make last writeable bit by software 12
-        CONFIGURATION_SPACE[4][11 : 4] <= 7'b0; //hardcoded to 0
+        CONFIGURATION_SPACE[4][31 : 4] <= 'b0; //hardcoded to 0
 
         //BAR1
         CONFIGURATION_SPACE[5][0]     <= 1'b0; //memory req
         CONFIGURATION_SPACE[5][2 : 1] <= 2'b10; //64 bit decoding hence now BAR2 will hold upper address bits
         CONFIGURATION_SPACE[5][3]     <= 1'b1; //prefetchable
         //make last writeable bit by software 26
-        CONFIGURATION_SPACE[5][25 : 4] <= 22'b0; //hardcoded to 0
+        CONFIGURATION_SPACE[5][31 : 4] <= 'b0; //hardcoded to 0
 
         //BAR2 is fully writable by software
+        CONFIGURATION_SPACE[6] <= 32'b0;
 
         //BAR3
         CONFIGURATION_SPACE[7][0] <= 1'b1; //io req
         CONFIGURATION_SPACE[7][1] <= 1'b0; //reserved
         //last writable bit is 8
-        CONFIGURATION_SPACE[7][7 : 2] <= 7'b0; //hardcoded to 0
+        CONFIGURATION_SPACE[7][31 : 2] <= 'b0; //hardcoded to 0
 
         //Rest BARS are not used hence 0s
         CONFIGURATION_SPACE[8] <= 32'b0;  
@@ -138,6 +140,8 @@ always_ff @(posedge clk) begin
                 WRITE_MASK[i] <= 32'hFFFF_FFFF;
             end
         end
+        data_out[0] <= 32'b0;
+        data_out[1] <= 32'b0;
     end
     else begin
         if (CONFIG_WRITE) begin
@@ -150,6 +154,7 @@ always_ff @(posedge clk) begin
         end
         if (CONFIG_READ) begin
             data_out[0] <= CONFIGURATION_SPACE[Register_Number];
+            data_out[1] <= 32'b0;
         end
         if (DW_3_MEM_READ) begin
             if ((BAR0_LIMIT_Address <= Address_lower) && (Address_lower <= BAR0_LIMIT_Address_upper)) begin
