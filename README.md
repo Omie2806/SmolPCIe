@@ -82,8 +82,10 @@ simply compile and view the waveforms on Vivado
 ```
 
 
-## Reference
+## References
 
 *PCI Express Technology 3.0* (MindShare Inc.) — chapters on architecture overview, address space & transaction routing, TLP elements, DLLP elements, and the Ack/Nak protocol (till chapter 10).*
 
 *PCIe 3.0 Spec sheet.*
+
+*for LCRC generation: https://leventozturk.com/engineering/crc/* 
