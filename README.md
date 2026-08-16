@@ -1,8 +1,8 @@
-# PCIe RTL Implementation (Transaction and Data Link Layers)
+# PCIe RTL Implementation (Transaction Layer and Data Link Layer)
 
-A SystemVerilog implementation of the PCIe Transaction and Data Link Layers, built to understand and demonstrate how PCIe actually works at the RTL level.
+A SystemVerilog implementation of the PCIe Transaction Layer and Data Link Layer, built to understand and demonstrate how PCIe actually works at the RTL level.
 We test Enumeration, Memory and IO requests, rejected Memory and IO requests, Completion generation and corresponding DLL working which includes, ACK timer runout, LCRC Error NAKs and Higher Sequence error NAKs. 
-This project covers Bidirectional TL and DLL (**DLL is not added for completions yet**)
+This project covers Bidirectional TL and DLL (**DLL has not been added for completions**)
 
 
 ---
@@ -84,5 +84,6 @@ simply compile and view the waveforms on Vivado
 
 ## Reference
 
-*PCI Express Technology 3.0* (MindShare Inc.) — chapters on architecture overview, address space & transaction routing, TLP elements, DLLP elements, and the Ack/Nak protocol (till chapter 10).
-*PCIe 3.0 Spec sheet.
+*PCI Express Technology 3.0* (MindShare Inc.) — chapters on architecture overview, address space & transaction routing, TLP elements, DLLP elements, and the Ack/Nak protocol (till chapter 10).*
+
+*PCIe 3.0 Spec sheet.*
