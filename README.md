@@ -1,21 +1,19 @@
-# PCIe RTL Implementation (Transaction Layer)
+# PCIe RTL Implementation (Transaction and Data Link Layers)
 
-A SystemVerilog implementation of the PCIe Transaction Layer, built to understand and demonstrate how PCIe actually works at the RTL level. We start from TLP encoding/decoding through enumeration, address decode, and completion handling.
+A SystemVerilog implementation of the PCIe Transaction and Data Link Layers, built to understand and demonstrate how PCIe actually works at the RTL level.
+We test Enumeration, Memory and IO requests, rejected Memory and IO requests, Completion generation and corresponding DLL working which includes, ACK timer runout, LCRC Error NAKs and Higher Sequence error NAKs. 
+This project covers Bidirectional TL and DLL (**DLL is not added for completions yet**)
 
-This project is built to demonstrate how PCIe works at hardware level. 
-
-> **Status:** Transaction Layer (TL) complete, bidirectional, and verified.
-- Data Link Layer (DLL): Ack/Nak, replay buffer, flow control **not yet implemented**.
 
 ---
 
 ## What This Project Does
 
-A miniature PCIe topology, that is, one Root Complex (RC) and one Endpoint implemented at the RTL level(TL/DLL scope; PHY is abstracted out).
+A miniature PCIe topology, that is, one Root Complex (RC) and one Endpoint implemented at the RTL level(TL/DLL scope).
 
 The RC can:
 - Enumerate(initialize is simple words) the endpoint (probe Vendor/Device ID, size and assign all BARs)
-- Issue Configuration, Memory,I/O Read/Write requests and messages
+- Issue Configuration, Memory, I/O Read/Write requests and messages
 - Decode returned Completions (status, tag, data)
 
 The Endpoint can:
@@ -33,57 +31,44 @@ The Endpoint can:
 <img width="940" height="473" alt="image" src="https://github.com/user-attachments/assets/8c94cad8-e924-4aef-a497-7d15a31ce815" />
 
 
-### Module Overview
+## Brief PCIe Layer Overview
+### Transaction Layer:
+This layer is responsible for encoding or decoding the information the Root/Device wants to convey.
+- It receiver information like the device to target, the transaction type, payload, etc from the software/core.
+- Then it encodes the received information in headers and payloads and together they form a Transaction Layer Packet (TLP).
+- This TLP is then passed to the Data Link Layer and to the Physical Layer for addition of error detection fields and other fields required for transmission
+- The receiver does the exact opposite of this, the TLP is passed from the PHY and DL layers to the TL. There, the TLP gets decoded and processed.
+- The Receiver may issue Completions depending upon the Request Type (like posted and non-posted).
 
-| Module | Role |
-|---|---|
-| `TLP_Header_encoder` | RC-side: packs intent (request type, target, address, data) into a spec-correct TLP header |
-| `TLP_Decoder` | Endpoint-side: parses an incoming TLP header, dispatches by Fmt/Type |
-| `device_1` | Endpoint core: configuration space (with BAR masking), Mem/IO storage, BAR-relative address decode, burst state machine |
-| `completion_gen` | Endpoint-side: packs a Completion (Cpl/CplD) header |
-| `Completer_Decoder` | RC-side: parses an incoming Completion header (status, tag, byte count, data) |
-| `top_decoder_device` | Endpoint-side integration (decoder + device + completion generator) |
-| `top_Decoder_Encoder` | RC-side integration (encoder + completion decoder) |
+### Data Link Layer:
+This layer prepares the TLP for error detection at the receiver side and attaches a sequence number for it's identification.
+- The DLL Transmitter attaches an LCRC field to the TLP and a sequence number for error detection
+- Then the TLP is stored in a Replay buffer which holds these TLPs incase the receiver would output and error in the TLP(NAK)
+- ACKs and NAKs clear the contents of the replay buffer and NAKs cause a replay of the TLPs which had errors
+- Replays happen depending upon the Sequence Number of the TLP, the Sequence Number for which NAK was received gets cleared along with the TLPs with older Sequence numbers and the Next TLPs in the Buffer get replayed.
+- ACK clears the contents of the Buffer depending upon the sequence number and the older TLPs get cleared too.
+- The Receiver Checks for errors like data corruption, wrong sequence numbers, etc
+- It issues ACKs and NAKs based on the status of the errors to the Transmitter
+- The receiver sends Data Link Layer Packects (DLLPs) to convey ACKs/NAKs (DLLPs are issued for other purposes too but it's out of scope here)
+- The transmitter decodes these DLLPs
 
+  <img width="1002" height="623" alt="image" src="https://github.com/user-attachments/assets/01b79762-a425-4a8a-9c85-b30d42c48b96" />
+
+**I highly suggest you to read the RTL of DLL side by side to understand this**
+
+**PHY Layer is not a part of this project**
 ---
 
-## What's Implemented
+## Simplifications made
+- Assumed memory accesses to always be DW aligned
+- Did not use different clocks for the Root and Device (hence the REPLAY_TIMER never expires)
+- Completion side DLL is still pending
+- Flow control is also pending
+- Error Testing has been thoroughly done for DLL but is still pending for the complete side (see DLL tests folder)
+- I've used directed testbenches to prove basic error detection and robustness but I might need formal verification before expanding this further
+- Drift checking of SEQUENNCE NUMBERS in the Replay Buffer has been skipped (same clock so no drift should happen)
+- DLLP CRC Check is also remaining
 
-**Transaction Layer — Receive path (Endpoint)**
-- [x] TLP Fmt/Type decode for Config (Type 0/1), Memory (32/64-bit), I/O, Completion
-- [x] Configuration space model: Vendor/Device ID, BAR0–BAR3, correct per-BAR hardwired-zero write masking
-- [x] BAR sizing via all-1s-write/read-back, verified for 32-bit Mem, 64-bit Mem, and I/O BARs
-- [x] BAR-relative address decode (converts absolute wire address → local storage offset)
-- [x] Multi-DWord burst read/write (Length field, including the "0 encodes 1024" case)
-- [x] Completion generation (CplD for reads, Cpl for writes), gated so posted writes (Memory Write) never generate a completion
-
-**Transaction Layer — Transmit path (RC)**
-- [x] TLP header generation for Config Read/Write (Type 0), Memory Read/Write (32/64-bit), I/O Read/Write
-- [x] Completion decode (status, tag, byte count, requester ID, data)
-
-**Verification**
-- [x] Directed simulation testbenches for enumeration, BAR sizing (all 4 BAR types), multi-DW Mem/IO read/write, out-of-range address rejection
-
-**Not yet implemented**
-- [ ] Data Link Layer — LCRC, sequence numbers, Ack/Nak DLLPs, replay buffer, replay timer
-- [ ] Credit-based flow control
-- [ ] Switch / multi-endpoint topology, multi-hop routing
-- [ ] Byte-enable-aware partial-DWord writes (currently full-DWord-only, see below)
-- [ ] Physical Layer (intentionally out of scope — see below)
-- [ ] Message TLPs (decode dispatch exists, field handling deferred)
-
----
-
-## Scope & Simplifications
-
-Deliberate, documented simplifications made to keep the project tractable without giving up correctness on what *is* implemented:
-
-- **PCIe generation:** TL/DLL scoped to Gen1/Gen2 semantics (8b/10b era). These layers barely change across generations; Gen6's FLIT-mode restructuring and mandatory FEC are out of scope.
-- **Physical Layer:** entirely abstracted out. No SerDes/PHY modeling — PHY-layer faults (when DLL fault injection is added) will be modeled behaviorally (e.g. injected bit errors manifesting as LCRC failures), not at the signaling level.
-- **Byte enables:** every transaction is currently assumed full-DWord-width (First/Last DW Byte Enables = `1111`). Byte-level partial writes are decoded but not yet acted on in the data path.
-- **Single outstanding request:** the RC's Tag is currently hardwired to 0 that means, only one request is in flight at a time. Real tag tracking (needed for concurrent outstanding requests) is not yet implemented.
-- **No Max Payload Size negotiation / completion splitting:** a single completion currently carries the full requested length; MPS-based completion splitting is not modeled.
-- **Topology:** one RC, one Endpoint. No switch so Type 1 Configuration Requests (used for switch-crossing config traffic) are decoded but never actually generated or exercised.
 
 ---
 
@@ -96,97 +81,8 @@ Deliberate, documented simplifications made to keep the project tractable withou
 simply compile and view the waveforms on Vivado
 ```
 
-Testbenches are directed (not randomized/scoreboard-based yet) and step through: reset → enumeration (Vendor ID probe, BAR sizing + base assignment for all 4 BARs) → Memory read/write (including multi-DW and out-of-range rejection) → I/O read/write.
-
-
-## Roadmap
-
-1. **Data Link Layer** — LCRC, sequence numbering, Ack/Nak DLLP exchange, replay buffer + replay timer, credit-based flow control. This is where the project moves from stateless request/response correctness to reasoning about concurrent, timing-sensitive, fault-recovering hardware state — error injection (corrupted LCRC, dropped DLLPs, forced timeouts, credit exhaustion) will be used to verify recovery behavior.
-2. **Switch support** — address/ID-based TLP routing across multiple downstream ports, Type 1 Configuration Request handling, transaction ordering across ports.
-3. **Board-deployable top-level** — on-chip sequencer or UART-based injection, real board I/O only.
-
----
-
 
 ## Reference
 
-*PCI Express Technology 3.0* (MindShare Inc.) — chapters on architecture overview, address space & transaction routing, TLP elements, DLLP elements, and the Ack/Nak protocol (till chapter 5).
-
-### Module Overview
-
-| Module | Role |
-|---|---|
-| `TLP_Header_encoder` | RC-side: packs intent (request type, target, address, data) into a spec-correct TLP header |
-| `TLP_Decoder` | Endpoint-side: parses an incoming TLP header, dispatches by Fmt/Type |
-| `device_1` | Endpoint core: configuration space (with BAR masking), Mem/IO storage, BAR-relative address decode, burst state machine |
-| `completion_gen` | Endpoint-side: packs a Completion (Cpl/CplD) header |
-| `Completer_Decoder` | RC-side: parses an incoming Completion header (status, tag, byte count, data) |
-| `top_decoder_device` | Endpoint-side integration (decoder + device + completion generator) |
-| `top_Decoder_Encoder` | RC-side integration (encoder + completion decoder) |
-
----
-
-## What's Implemented
-
-**Transaction Layer — Receive path (Endpoint)**
-- [x] TLP Fmt/Type decode for Config (Type 0/1), Memory (32/64-bit), I/O, Completion
-- [x] Configuration space model: Vendor/Device ID, BAR0–BAR3, correct per-BAR hardwired-zero write masking
-- [x] BAR sizing via all-1s-write/read-back, verified for 32-bit Mem, 64-bit Mem, and I/O BARs
-- [x] BAR-relative address decode (converts absolute wire address → local storage offset)
-- [x] Multi-DWord burst read/write (Length field, including the "0 encodes 1024" case)
-- [x] Completion generation (CplD for reads, Cpl for writes), gated so posted writes (Memory Write) never generate a completion
-
-**Transaction Layer — Transmit path (RC)**
-- [x] TLP header generation for Config Read/Write (Type 0), Memory Read/Write (32/64-bit), I/O Read/Write
-- [x] Completion decode (status, tag, byte count, requester ID, data)
-
-**Verification**
-- [x] Directed simulation testbenches for enumeration, BAR sizing (all 4 BAR types), multi-DW Mem/IO read/write, out-of-range address rejection
-
-**Not yet implemented**
-- [ ] Data Link Layer — LCRC, sequence numbers, Ack/Nak DLLPs, replay buffer, replay timer
-- [ ] Credit-based flow control
-- [ ] Switch / multi-endpoint topology, multi-hop routing
-- [ ] Byte-enable-aware partial-DWord writes (currently full-DWord-only, see below)
-- [ ] Physical Layer (intentionally out of scope — see below)
-- [ ] Message TLPs (decode dispatch exists, field handling deferred)
-
----
-
-## Scope & Simplifications
-
-Deliberate, documented simplifications made to keep the project tractable without giving up correctness on what *is* implemented:
-
-- **PCIe generation:** TL/DLL scoped to Gen1/Gen2 semantics (8b/10b era). These layers barely change across generations; Gen6's FLIT-mode restructuring and mandatory FEC are out of scope.
-- **Physical Layer:** entirely abstracted out. No SerDes/PHY modeling — PHY-layer faults (when DLL fault injection is added) will be modeled behaviorally (e.g. injected bit errors manifesting as LCRC failures), not at the signaling level.
-- **Byte enables:** every transaction is currently assumed full-DWord-width (First/Last DW Byte Enables = `1111`). Byte-level partial writes are decoded but not yet acted on in the data path.
-- **Single outstanding request:** the RC's Tag is currently hardwired to 0 that means, only one request is in flight at a time. Real tag tracking (needed for concurrent outstanding requests) is not yet implemented.
-- **No Max Payload Size negotiation / completion splitting:** a single completion currently carries the full requested length; MPS-based completion splitting is not modeled.
-- **Topology:** one RC, one Endpoint. No switch so Type 1 Configuration Requests (used for switch-crossing config traffic) are decoded but never actually generated or exercised.
-
----
-
-
----
-
-## Running the Simulation
-
-```bash
-simply compile and view the waveforms on Vivado
-```
-
-Testbenches are directed (not randomized/scoreboard-based yet) and step through: reset → enumeration (Vendor ID probe, BAR sizing + base assignment for all 4 BARs) → Memory read/write (including multi-DW and out-of-range rejection) → I/O read/write.
-
-
-## Roadmap
-
-1. **Data Link Layer** — LCRC, sequence numbering, Ack/Nak DLLP exchange, replay buffer + replay timer, credit-based flow control. This is where the project moves from stateless request/response correctness to reasoning about concurrent, timing-sensitive, fault-recovering hardware state — error injection (corrupted LCRC, dropped DLLPs, forced timeouts, credit exhaustion) will be used to verify recovery behavior.
-2. **Switch support** — address/ID-based TLP routing across multiple downstream ports, Type 1 Configuration Request handling, transaction ordering across ports.
-3. **Board-deployable top-level** — on-chip sequencer or UART-based injection, real board I/O only.
-
----
-
-
-## Reference
-
-*PCI Express Technology 3.0* (MindShare Inc.) — chapters on architecture overview, address space & transaction routing, TLP elements, DLLP elements, and the Ack/Nak protocol (till chapter 5).
+*PCI Express Technology 3.0* (MindShare Inc.) — chapters on architecture overview, address space & transaction routing, TLP elements, DLLP elements, and the Ack/Nak protocol (till chapter 10).
+*PCIe 3.0 Spec sheet.
